@@ -1,0 +1,108 @@
+---
+title: "ClassePredictor"
+author: "Ajay Athavale"
+date: "3/31/2023"
+output: html_document
+---
+
+## Overview
+
+
+## Step 1: Data Preprocessing 
+
+Load necessary data and partition using 70% of training and 30% of test data.
+
+
+```{r DataLoading, message = FALSE}
+library(caret)
+trainURL <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testURL <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+training <- read.csv('pml-training.csv')
+testing <- read.csv('pml-testing.csv')
+label <- createDataPartition(training$classe, p = 0.7, list = FALSE)
+train <- training[label, ]
+test <- training[-label, ]
+```
+
+There are certain features that needs to be modified before they can be used to avoid 
+outliers and invalid data like near zero variances. NA items which are basically data sets which needs to be removed.
+
+```{r DataCleaning}
+NZV <- nearZeroVar(train)
+train <- train[ ,-NZV]
+test <- test[ ,-NZV]
+label <- apply(train, 2, function(x) mean(is.na(x))) > 0.95
+train <- train[, -which(label, label == FALSE)]
+test <- test[, -which(label, label == FALSE)]
+train <- train[ , -(1:5)]
+test <- test[ , -(1:5)]
+```
+
+As a result of the preprocessing steps, we were able to reduce 160 variables to 54.
+
+## Step 2: Exploring data for use
+
+The co-relation plot will help understand degree of dependences betweek several variables of the data set. This can be done using correlation plot
+
+```{r CorrelationPlot, fig.width=12, fig.height=8}
+library(corrplot)
+corrMat <- cor(train[,-54])
+corrplot(corrMat, method = "color", type = "lower", tl.cex = 0.8, tl.col = rgb(0,0,0))
+```
+
+In the plot above, the number of correlations are quite few, so PCA (Principal Component Analysis) is not needed.
+
+## Step 3: Model Selection
+
+We will use 3 methods to model the training set and thereby choose one with highest accuracy.
+
+A confusion matrix plotted at the end of each model will help visualize the analysis better.
+
+### Decision Tree
+
+```{r DecisionTree, message = FALSE, warning = FALSE, fig.width=18, fig.height=10}
+library(rpart)
+library(rpart.plot)
+library(rattle)
+set.seed(13908)
+modelDT <- rpart(classe ~ ., data = train, method = "class")
+fancyRpartPlot(modelDT)
+predictDT <- predict(modelDT, test, type = "class")
+confMatDT <- confusionMatrix(predictDT, as.factor(test$classe))
+confMatDT
+```
+
+### Random Forest
+
+```{r RandomForest, message = FALSE}
+library(caret)
+set.seed(13908)
+control <- trainControl(method = "cv", number = 3, verboseIter=FALSE)
+modelRF <- train(classe ~ ., data = train, method = "rf", trControl = control)
+modelRF$finalModel
+predictRF <- predict(modelRF, test)
+confMatRF <- confusionMatrix(predictRF, as.factor(test$classe))
+confMatRF
+```
+
+### Generalized Boosted Model
+
+```{r GBM, message = FALSE}
+library(caret)
+set.seed(13908)
+control <- trainControl(method = "repeatedcv", number = 5, repeats = 1, verboseIter = FALSE)
+modelGBM <- train(classe ~ ., data = train, trControl = control, method = "gbm", verbose = FALSE)
+modelGBM$finalModel
+predictGBM <- predict(modelGBM, test)
+confMatGBM <- confusionMatrix(predictGBM, as.factor(test$classe))
+confMatGBM
+```
+
+As Random Forest algorithm has maximum accuracy of 99.75% and it seems better of all algorithms. 
+
+## Predicting Test Set Output
+
+```{r TestSetPrediction, messages = FALSE}
+predictRF <- predict(modelRF, testing)
+predictRF
+```
